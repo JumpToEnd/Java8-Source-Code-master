@@ -360,12 +360,17 @@ public abstract class AbstractQueuedLongSynchronizer
      */
     private Node enq(final Node node) {
         for (;;) {
+            // 获取队尾
             Node t = tail;
+            // 如果队尾 == null
             if (t == null) { // Must initialize
+                // 设置一个空节点为 head
                 if (compareAndSetHead(new Node()))
                     tail = head;
             } else {
+                // 加到队尾
                 node.prev = t;
+                // 设置 tail = node
                 if (compareAndSetTail(t, node)) {
                     t.next = node;
                     return t;
@@ -381,8 +386,12 @@ public abstract class AbstractQueuedLongSynchronizer
      * @return the new node
      */
     private Node addWaiter(Node mode) {
+        // 封装为 一个 Node 节点
         Node node = new Node(Thread.currentThread(), mode);
+
         // Try the fast path of enq; backup to full enq on failure
+        // 尝试快速入队
+        // 如果能快速入队，直接入队
         Node pred = tail;
         if (pred != null) {
             node.prev = pred;
@@ -391,7 +400,11 @@ public abstract class AbstractQueuedLongSynchronizer
                 return node;
             }
         }
+
+        // 假如快速入队失败，尝试完整入队
+        // 假如到队列里
         enq(node);
+
         return node;
     }
 
@@ -419,7 +432,9 @@ public abstract class AbstractQueuedLongSynchronizer
          * to clear in anticipation of signalling.  It is OK if this
          * fails or if status is changed by waiting thread.
          */
+        // 获取 节点 状态
         int ws = node.waitStatus;
+        // 如果当前节点状态 < 0  => 置为 0
         if (ws < 0)
             compareAndSetWaitStatus(node, ws, 0);
 
@@ -429,13 +444,22 @@ public abstract class AbstractQueuedLongSynchronizer
          * traverse backwards from tail to find the actual
          * non-cancelled successor.
          */
+        // 获取 下一个节点
         Node s = node.next;
+        // 如果 下一个节点不为空
+        // 或者
+        // 下一个节点的状态 > 0 （CANCELLED)
         if (s == null || s.waitStatus > 0) {
+            // 把下一个节点 置为 null
             s = null;
+            // 从队尾开始向前遍历，直到节点为空或者节点为当前节点为止
+            // 如果 遍历到某个节点状态 <= 0
+            // 把这个节点 挪到 s 位置
             for (Node t = tail; t != null && t != node; t = t.prev)
                 if (t.waitStatus <= 0)
                     s = t;
         }
+        // 如果 下一个节点 不为空，唤醒下一个节点
         if (s != null)
             LockSupport.unpark(s.thread);
     }
@@ -634,18 +658,34 @@ public abstract class AbstractQueuedLongSynchronizer
      */
     final boolean acquireQueued(final Node node, long arg) {
         boolean failed = true;
+
         try {
             boolean interrupted = false;
             for (;;) {
+                // 获取 node 节点的前驱节点
                 final Node p = node.predecessor();
+
+                // 如果 前驱节点已经是 头结点
+                // 那么（并且）
+                // 尝试去获取资源
+                // ====
+                // 如果获取成功
+                // 把当前节点设置为头结点 并且 释放前驱节点
                 if (p == head && tryAcquire(arg)) {
                     setHead(node);
                     p.next = null; // help GC
                     failed = false;
                     return interrupted;
                 }
-                if (shouldParkAfterFailedAcquire(p, node) &&
-                    parkAndCheckInterrupt())
+
+                // 来到这里 说明
+                // 当前节点 不是头结点
+                // 或者
+                // 是头结点但是申请资源失败了
+                // ====
+                // shouldParkAfterFailedAcquire(p, node) => 判断一下当前节点是否应该阻塞
+                // parkAndCheckInterrupt() => 阻塞当前线程
+                if (shouldParkAfterFailedAcquire(p, node) && parkAndCheckInterrupt())
                     interrupted = true;
             }
         } finally {
@@ -973,8 +1013,10 @@ public abstract class AbstractQueuedLongSynchronizer
      *        can represent anything you like.
      */
     public final void acquire(long arg) {
-        if (!tryAcquire(arg) &&
-            acquireQueued(addWaiter(Node.EXCLUSIVE), arg))
+        // tryAcquire(arg)           =>  尝试获取资源，子类具体实现
+        // addWaiter(Node.EXCLUSIVE) =>  尝试入队，并将封装的节点返回
+        // acquireQueued(node, arg)  =>
+        if (!tryAcquire(arg) && acquireQueued(addWaiter(Node.EXCLUSIVE), arg))
             selfInterrupt();
     }
 
@@ -1036,10 +1078,19 @@ public abstract class AbstractQueuedLongSynchronizer
      * @return the value returned from {@link #tryRelease}
      */
     public final boolean release(long arg) {
+        // 尝试释放资源 => 子类具体实现
         if (tryRelease(arg)) {
+
+            // 获取 头结点
             Node h = head;
+
+            // 如果 头结点不为空
+            // 并且
+            // 头结点的状态不为 0 （默认状态）
             if (h != null && h.waitStatus != 0)
+                // 唤醒
                 unparkSuccessor(h);
+
             return true;
         }
         return false;
